@@ -8,9 +8,10 @@ pragma solidity ^0.8.0;
 import "hardhat/console.sol";
 import "./Verifier.sol";
 import "./NFTGame.sol";
+import "@chainlink/contracts/src/v0.8/VRFConsumerBase.sol";
 
 // This is the main building block for smart contracts.
-contract SieveQuestions {
+contract SieveQuestions is VRFConsumerBase  {
     Question[] rankedQuestions;
     Question[] public allQuestions;
     mapping (address => uint) pendingQuestions;
@@ -18,14 +19,25 @@ contract SieveQuestions {
     Verifier verifier;
     NFTGame nftGame;
 
-    constructor(address verifierAddress, address nftGameAddress) public {
+    bytes32 internal keyHash;
+    uint256 internal fee;
+    uint256 public randomResult;
+
+    constructor(address verifierAddress, address nftGameAddress) VRFConsumerBase(
+            0xdD3782915140c8f3b190B5D67eAc6dc5760C46E9, // VRF Coordinator
+            0xa36085F69e2889c224210F603D836748e7dC0088  // LINK Token
+        ) public {
         verifier = Verifier(verifierAddress);
         nftGame = NFTGame(nftGameAddress);
+
+                keyHash = 0x6c3699283bda56ad74f6b855546325b68d482e983852a7a82979cc4807b641f4;
+        fee = 0.1 * 10 ** 18;
     }
 
     function getQuestion() public returns (bytes32 ipfsLink, uint answerHash, uint id){
         uint length = rankedQuestions.length;
-        uint randomIndex = 12 % length; //it's gonna be random and distributed in gaussian way
+        getRandomNumber();
+        uint randomIndex = randomResult % length; //TODO: change distribution from linear to gaussian way
 
         ipfsLink = rankedQuestions[randomIndex].ipfsQuestionHash;
         answerHash = rankedQuestions[randomIndex].answerHash;
@@ -34,6 +46,14 @@ contract SieveQuestions {
         rankedQuestions[randomIndex].askedTimes++;
     }
 
+    function getRandomNumber() public returns (bytes32 requestId) {
+        require(LINK.balanceOf(address(this)) >= fee, "Not enough LINK - fill contract with faucet");
+        return requestRandomness(keyHash, fee);
+    }
+
+    function fulfillRandomness(bytes32 requestId, uint256 randomness) internal override {
+        randomResult = randomness;
+    }
 
     function moveQuestionLeft(uint id, uint amount) private {
         amount = amount > id? id: amount;
