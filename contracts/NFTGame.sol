@@ -7,32 +7,65 @@ pragma solidity ^0.8.0;
 // We import this library to be able to use console.log
 import "hardhat/console.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "./Governable.sol";
+import "./SieveQuestions.sol";
 
 // This is the main building block for smart contracts.
-contract NFTGame {
+contract NFTGame is Governable {
 
     Participant firstParticipant;
     Participant secondParticipant;
 
     mapping (address => Lobby) public lobbyByFirstPlayer;
+    mapping (address => address) public firstPlayerBySecondPlayer;
     Participant waitingParticipant;
+    SieveQuestions sieve;
 
     function getNFTHash(address collectionAddress, uint id) private pure returns(uint){
         return uint(keccak256(abi.encode(collectionAddress, id)));
     }
 
-    function register(address collectionAddress, uint id) public {
+    function register(address collectionAddress, uint id, address sieveAddress) public {
         if(waitingParticipant.owner == address(0)){
-            waitingParticipant = Participant(id, msg.sender, collectionAddress);
+            waitingParticipant = Participant(id, msg.sender, collectionAddress, QuestionState.Waiting);
             return;
         }
 
-        lobbyByFirstPlayer[waitingParticipant.owner] = Lobby(waitingParticipant, Participant(id, msg.sender, collectionAddress));
+       (bytes32 ipfsLink, bytes32 answerHash, uint questionId) = SieveQuestions(sieveAddress).getQuestion();
+        lobbyByFirstPlayer[waitingParticipant.owner] = Lobby(waitingParticipant, Participant(id, msg.sender, collectionAddress, QuestionState.Waiting), questionId);
+        firstPlayerBySecondPlayer[msg.sender] = waitingParticipant.owner;
+
 
         delete waitingParticipant;
     }
 
-    function startFight(address firstPlayerAdress, bool firstPlayerAnsweredRight, bool secondPlayerAnsweredRight) public {
+    function setQuestionAnswered(address playerAddress, bool answered) public onlyGovernance returns(bool fightHappened, address winningAddress){
+        address firstPlayerAddress;
+
+        if(lobbyByFirstPlayer[playerAddress].firstParticipant.owner != address(0)){
+            firstPlayerAddress = playerAddress;
+            lobbyByFirstPlayer[firstPlayerAddress].firstParticipant.questionState = answered? QuestionState.AnsweredRight: QuestionState.AnsweredWrong;
+        }
+        else if(lobbyByFirstPlayer[firstPlayerBySecondPlayer[playerAddress]].secondParticipant.owner != address(0)){
+            firstPlayerAddress = firstPlayerBySecondPlayer[playerAddress];
+            lobbyByFirstPlayer[firstPlayerAddress].secondParticipant.questionState = answered? QuestionState.AnsweredRight: QuestionState.AnsweredWrong;
+        }
+        else {
+            revert();
+        }
+
+        QuestionState firstPlayerQuestion = lobbyByFirstPlayer[playerAddress].firstParticipant.questionState;
+        QuestionState secondPlayerQuestion = lobbyByFirstPlayer[playerAddress].secondParticipant.questionState;
+
+        if(firstPlayerQuestion != QuestionState.Waiting && secondPlayerQuestion!= QuestionState.Waiting ){
+            fightHappened = true;
+            winningAddress = startFight(firstPlayerAddress, 
+            firstPlayerQuestion == QuestionState.AnsweredRight,
+            secondPlayerQuestion == QuestionState.AnsweredRight);
+        }
+    }
+
+    function startFight(address firstPlayerAdress, bool firstPlayerAnsweredRight, bool secondPlayerAnsweredRight) private returns(address){
         uint firstAdvantage = firstPlayerAnsweredRight? 33: 0;
         uint secondAdvantage = secondPlayerAnsweredRight? 33: 0;
 
@@ -42,14 +75,13 @@ contract NFTGame {
         bool firstPlayerWon = simulateFight(firstHash, secondHash, firstAdvantage, secondAdvantage);
 
         if(firstPlayerWon){
-            firstPlayerWon= firstPlayerWon;
-            //rewardFirstPlayer
+            return firstPlayerAdress;
         }
         else{
-            firstPlayerWon = firstPlayerWon;
-            //reward second player
+            return lobby.secondParticipant.owner;
         }
 
+        delete firstPlayerBySecondPlayer[lobbyByFirstPlayer[firstPlayerAdress].secondParticipant.owner];
         delete lobbyByFirstPlayer[firstPlayerAdress];
     }
 
@@ -136,9 +168,13 @@ struct Participant{
     uint nftId;
     address owner;
     address nftAddress;
+    QuestionState questionState;
 }
 
 struct Lobby{
     Participant firstParticipant;
     Participant secondParticipant;
+    uint questionId;
 }
+
+enum QuestionState{Waiting, AnsweredWrong, AnsweredRight}

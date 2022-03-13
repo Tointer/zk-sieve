@@ -7,18 +7,22 @@ pragma solidity ^0.8.0;
 // We import this library to be able to use console.log
 import "hardhat/console.sol";
 import "./Verifier.sol";
+import "./NFTGame.sol";
 
 // This is the main building block for smart contracts.
 contract SieveQuestions {
     Question[] rankedQuestions;
-    Question[] allQuestions;
+    Question[] public allQuestions;
     mapping (address => uint) pendingQuestions;
     uint8 targetWinrate;
     Verifier verifier;
+    NFTGame nftGame;
 
-    constructor(address verifierAddress) public {
+    constructor(address verifierAddress, address nftGameAddress) public {
         verifier = Verifier(verifierAddress);
+        nftGame = NFTGame(nftGameAddress);
     }
+
 
     function getQuestion() public returns (bytes32 ipfsLink, bytes32 answerHash, uint id){
         uint length = rankedQuestions.length;
@@ -52,13 +56,16 @@ contract SieveQuestions {
 
     function answerQuestion(uint[2] memory a,
             uint[2][2] memory b,
-            uint[2] memory c) public {
-        //check if true
+            uint[2] memory c) public returns (bool correct){
 
         uint id = pendingQuestions[msg.sender];
-        require(verifier.verifyProof(a, b, c, [uint(allQuestions[id].answerHash)]), "proof not valid");
+        correct = verifier.verifyProof(a, b, c, [uint(allQuestions[id].answerHash)]);
 
-        allQuestions[id].correctAnswerTimes++;
+        nftGame.setQuestionAnswered(msg.sender, correct);
+
+        if(correct){
+            allQuestions[id].correctAnswerTimes++;
+        }
 
         if(allQuestions[id].askedTimes > 10){
             uint newWinrate = (allQuestions[id].correctAnswerTimes*1000000)/allQuestions[id].askedTimes;
@@ -74,6 +81,11 @@ contract SieveQuestions {
         delete pendingQuestions[msg.sender];
     }
 
+    function addQuestion(bytes32 ipfsHash, bytes32 answerHash) public {
+        uint128 rank = uint128(rankedQuestions.length);
+        rankedQuestions.push(Question(ipfsHash, answerHash, 0, 0, rank, rank));
+    }
+
     function delta(uint a, uint b) private pure returns(uint){
         return a > b? a - b : b - a;
     }
@@ -86,9 +98,4 @@ struct Question{
     uint128 correctAnswerTimes;
     uint128 id;
     uint128 rank;
-}
-
-struct Lobby{
-    Question question;
-    address[] participants;
 }
