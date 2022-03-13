@@ -33,6 +33,8 @@ let wallets: SignerWithAddress[];
     const SieveQuestions = await ethers.getContractFactory("SieveQuestions");
     sieveQuestions = await SieveQuestions.deploy(verifier.address, nftGame.address);
 
+    nftGame.addGovernor(sieveQuestions.address);
+
     wallets = await ethers.getSigners();
   });
 
@@ -40,16 +42,20 @@ let wallets: SignerWithAddress[];
   describe("Deployment", function () {
     
     it("add question", async function () {
-      await sieveQuestions.addQuestion(ethers.utils.formatBytes32String("123"), ethers.utils.formatBytes32String("123"));
+      await sieveQuestions.addQuestion(ethers.utils.formatBytes32String("123"), 5);
     });
 
     it("register in game", async function () {
       const first = wallets[0];
       const second = wallets[1];
 
-      await sieveQuestions.addQuestion(ethers.utils.formatBytes32String("123"), ethers.utils.formatBytes32String("123"));
-      await nftGame.connect(first).register(first.address, 0);
-      await nftGame.connect(second).register(second.address, 0);
+      await sieveQuestions.addQuestion(ethers.utils.formatBytes32String("123"), 5);
+      await nftGame.connect(first).register(first.address, 0, sieveQuestions.address);
+      await nftGame.connect(second).register(second.address, 0, sieveQuestions.address);
+
+      const questionId = await nftGame.getLobbyQuestion(first.address);
+      const res = await sieveQuestions.connect(first).callStatic.answerQuestion([2,2], [[2,2],[2, 2]], [2,2], questionId);
+      console.log(res);
     });
   });
 });

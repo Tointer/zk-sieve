@@ -31,12 +31,24 @@ contract NFTGame is Governable {
             return;
         }
 
-       (bytes32 ipfsLink, bytes32 answerHash, uint questionId) = SieveQuestions(sieveAddress).getQuestion();
+       (bytes32 ipfsLink, uint answerHash, uint questionId) = SieveQuestions(sieveAddress).getQuestion();
         lobbyByFirstPlayer[waitingParticipant.owner] = Lobby(waitingParticipant, Participant(id, msg.sender, collectionAddress, QuestionState.Waiting), questionId);
         firstPlayerBySecondPlayer[msg.sender] = waitingParticipant.owner;
 
 
         delete waitingParticipant;
+    }
+
+    function getLobbyQuestion(address playerAddress) public view returns(uint){
+        address firstPlayerAddress;
+        if(lobbyByFirstPlayer[playerAddress].firstParticipant.owner != address(0)){
+            firstPlayerAddress = playerAddress;
+            return lobbyByFirstPlayer[firstPlayerAddress].questionId;
+        }
+        else if(lobbyByFirstPlayer[firstPlayerBySecondPlayer[playerAddress]].secondParticipant.owner != address(0)){
+            firstPlayerAddress = firstPlayerBySecondPlayer[playerAddress];
+            lobbyByFirstPlayer[firstPlayerAddress].questionId;
+        }
     }
 
     function setQuestionAnswered(address playerAddress, bool answered) public onlyGovernance returns(bool fightHappened, address winningAddress){

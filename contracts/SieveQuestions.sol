@@ -23,8 +23,7 @@ contract SieveQuestions {
         nftGame = NFTGame(nftGameAddress);
     }
 
-
-    function getQuestion() public returns (bytes32 ipfsLink, bytes32 answerHash, uint id){
+    function getQuestion() public returns (bytes32 ipfsLink, uint answerHash, uint id){
         uint length = rankedQuestions.length;
         uint randomIndex = 12 % length; //it's gonna be random and distributed in gaussian way
 
@@ -56,10 +55,9 @@ contract SieveQuestions {
 
     function answerQuestion(uint[2] memory a,
             uint[2][2] memory b,
-            uint[2] memory c) public returns (bool correct){
+            uint[2] memory c, uint id) public returns (bool correct){
 
-        uint id = pendingQuestions[msg.sender];
-        correct = verifier.verifyProof(a, b, c, [uint(allQuestions[id].answerHash)]);
+        correct = verifier.verifyProof(a, b, c, [(allQuestions[id].answerHash)]);
 
         nftGame.setQuestionAnswered(msg.sender, correct);
 
@@ -81,9 +79,10 @@ contract SieveQuestions {
         delete pendingQuestions[msg.sender];
     }
 
-    function addQuestion(bytes32 ipfsHash, bytes32 answerHash) public {
+    function addQuestion(bytes32 ipfsHash, uint answerHash) public {
         uint128 rank = uint128(rankedQuestions.length);
         rankedQuestions.push(Question(ipfsHash, answerHash, 0, 0, rank, rank));
+        allQuestions.push(Question(ipfsHash, answerHash, 0, 0, rank, rank));
     }
 
     function delta(uint a, uint b) private pure returns(uint){
@@ -93,7 +92,7 @@ contract SieveQuestions {
 
 struct Question{
     bytes32 ipfsQuestionHash;
-    bytes32 answerHash;
+    uint answerHash;
     uint128 askedTimes;
     uint128 correctAnswerTimes;
     uint128 id;
